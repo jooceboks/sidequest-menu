@@ -700,55 +700,109 @@
     show('screen-intro');
   }
 
-  function downloadCard() {
+  async function downloadCard() {
     const card = document.getElementById('menu-card');
     card.classList.add('exporting');
-    html2canvas(card, { scale: 3, backgroundColor: '#EDE6D6' }).then(canvas => {
-      card.classList.remove('exporting');
 
-      canvas.toBlob(async (blob) => {
-        const file = new File([blob], 'my-side-quest-menu.png', { type: 'image/png' });
+    // make sure webfonts are actually loaded before we draw text on canvas,
+    // otherwise the CTA text below can render in a fallback system font
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
 
-        // Prefer the native share sheet on phones — this is what lets iOS
-        // users tap "Save Image" straight to their Photos app. The download
-        // attribute below silently fails to save on iOS Safari, so this path
-        // is not just a fallback, it's the better experience on mobile.
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: 'my side quest menu',
-            });
-            return;
-          } catch (err) {
-            // user cancelled the share sheet — do nothing further
-            if (err.name === 'AbortError') return;
-            // otherwise fall through to the manual fallback below
-          }
+    const cardCanvas = await html2canvas(card, { scale: 3, backgroundColor: '#EDE6D6' });
+    card.classList.remove('exporting');
+
+    // compose the captured card into a proper 9:16 story-ready frame
+    // instead of exporting the card at its raw on-screen size
+    const W = 1080, H = 1920;
+    const out = document.createElement('canvas');
+    out.width = W;
+    out.height = H;
+    const ctx = out.getContext('2d');
+
+    // background matches the site, so the card reads as "framed" not stretched
+    ctx.fillStyle = '#0E1116';
+    ctx.fillRect(0, 0, W, H);
+
+    // reserve space top and bottom for branding, fit the card into what's left
+    const marginX = 90;
+    const topSpace = 230;
+    const bottomSpace = 220;
+    const maxW = W - marginX * 2;
+    const maxH = H - topSpace - bottomSpace;
+
+    const scale = Math.min(maxW / cardCanvas.width, maxH / cardCanvas.height);
+    const drawW = cardCanvas.width * scale;
+    const drawH = cardCanvas.height * scale;
+    const drawX = (W - drawW) / 2;
+    const drawY = topSpace + (maxH - drawH) / 2;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 60;
+    ctx.shadowOffsetY = 30;
+    ctx.drawImage(cardCanvas, drawX, drawY, drawW, drawH);
+    ctx.restore();
+
+    // top label
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#B99B5C';
+    ctx.font = '500 26px "IBM Plex Mono"';
+    ctx.fillText('the side quest menu', W / 2, 130);
+
+    // bottom CTA — this is what makes a screenshot/repost actually
+    // shareable instead of a dead-end image
+    ctx.fillStyle = 'rgba(237,230,214,0.75)';
+    ctx.font = '30px "IBM Plex Mono"';
+    ctx.fillText('make yours — link in bio', W / 2, H - 130);
+
+    ctx.fillStyle = '#B99B5C';
+    ctx.font = 'italic 38px "Instrument Serif"';
+    ctx.fillText('@sliu.log', W / 2, H - 75);
+
+    out.toBlob(async (blob) => {
+      const file = new File([blob], 'my-side-quest-menu.png', { type: 'image/png' });
+
+      // Prefer the native share sheet on phones — this is what lets iOS
+      // users tap "Save Image" straight to their Photos app. The download
+      // attribute below silently fails to save on iOS Safari, so this path
+      // is not just a fallback, it's the better experience on mobile.
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'my side quest menu',
+          });
+          return;
+        } catch (err) {
+          // user cancelled the share sheet — do nothing further
+          if (err.name === 'AbortError') return;
+          // otherwise fall through to the manual fallback below
         }
+      }
 
-        // Fallback for desktop browsers and any phone browser without
-        // Web Share support: try a normal download link first.
-        const url = URL.createObjectURL(blob);
-        const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+      // Fallback for desktop browsers and any phone browser without
+      // Web Share support: try a normal download link first.
+      const url = URL.createObjectURL(blob);
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
 
-        if (isIOS) {
-          // iOS Safari ignores the download attribute — open the image in a
-          // new tab instead so the user can press-and-hold to save it.
-          const win = window.open(url, '_blank');
-          if (!win) {
-            alert('please allow pop-ups, or press and hold the menu card image to save it');
-          }
-        } else {
-          const link = document.createElement('a');
-          link.download = 'my-side-quest-menu.png';
-          link.href = url;
-          link.click();
+      if (isIOS) {
+        // iOS Safari ignores the download attribute — open the image in a
+        // new tab instead so the user can press-and-hold to save it.
+        const win = window.open(url, '_blank');
+        if (!win) {
+          alert('please allow pop-ups, or press and hold the menu card image to save it');
         }
+      } else {
+        const link = document.createElement('a');
+        link.download = 'my-side-quest-menu.png';
+        link.href = url;
+        link.click();
+      }
 
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-      }, 'image/png');
-    });
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }, 'image/png');
   }
 </script>
 
